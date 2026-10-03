@@ -28,14 +28,17 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
     confusion_matrix,
-    roc_auc_score
+    roc_auc_score,
+    roc_curve,
+    auc
 )
 
+from sklearn.preprocessing import label_binarize
 from gensim.models import Word2Vec
 
 
 # ============================================================
-# 1. PAGE CONFIG
+# 1. PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -47,167 +50,7 @@ st.set_page_config(
 
 
 # ============================================================
-# 2. PROFESSIONAL STYLING
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    /* Main page */
-    .stApp {
-        background: linear-gradient(
-            180deg,
-            #F8FAFC 0%,
-            #F3F6F9 100%
-        );
-    }
-
-    .block-container {
-        max-width: 1250px;
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-    }
-
-
-    /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(
-            180deg,
-            #102A43 0%,
-            #163D59 100%
-        );
-        border-right: 1px solid rgba(255,255,255,0.08);
-    }
-
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] label {
-        color: #F5F7FA;
-    }
-
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 {
-        color: white;
-    }
-
-    section[data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.15);
-    }
-
-
-    /* Metric cards */
-    div[data-testid="stMetric"] {
-        background: white;
-        border: 1px solid #E1E7EE;
-        border-radius: 14px;
-        padding: 18px;
-        box-shadow: 0 3px 10px rgba(15,23,42,0.04);
-    }
-
-    div[data-testid="stMetric"]:hover {
-        border-color: #B8CAD8;
-        box-shadow: 0 6px 16px rgba(15,23,42,0.07);
-        transition: 0.2s ease;
-    }
-
-
-    /* Bordered containers */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 14px;
-        border-color: #E1E7EE;
-        background: rgba(255,255,255,0.85);
-        box-shadow: 0 2px 8px rgba(15,23,42,0.03);
-    }
-
-
-    /* Buttons */
-    .stButton > button,
-    .stDownloadButton > button {
-        border-radius: 9px;
-        font-weight: 600;
-        min-height: 42px;
-        transition: all 0.2s ease;
-    }
-
-    .stButton > button:hover,
-    .stDownloadButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 5px 12px rgba(15,23,42,0.12);
-    }
-
-
-    /* Inputs */
-    .stTextInput input,
-    .stTextArea textarea {
-        border-radius: 9px;
-    }
-
-    div[data-baseweb="select"] > div {
-        border-radius: 9px;
-    }
-
-
-    /* File uploader */
-    section[data-testid="stFileUploaderDropzone"] {
-        border-radius: 12px;
-        border: 1.5px dashed #9FB3C8;
-        background-color: #F8FAFC;
-        padding: 18px;
-    }
-
-
-    /* Dataframes */
-    div[data-testid="stDataFrame"] {
-        border: 1px solid #E1E7EE;
-        border-radius: 12px;
-        overflow: hidden;
-        background: white;
-    }
-
-
-    /* Alerts */
-    div[data-testid="stAlert"] {
-        border-radius: 10px;
-    }
-
-
-    /* Expanders */
-    details {
-        background: white;
-        border-radius: 10px;
-        border: 1px solid #E1E7EE;
-        padding: 3px 8px;
-    }
-
-
-    /* Divider */
-    hr {
-        border: none;
-        border-top: 1px solid #E1E7EE;
-        margin-top: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-
-    /* Mobile */
-    @media (max-width: 768px) {
-        .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-            padding-top: 1.25rem;
-        }
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# 3. HEADER
+# 2. HEADER
 # ============================================================
 
 st.title("Student Feedback Analytics")
@@ -217,22 +60,11 @@ st.caption(
     "and Word2Vec + Random Forest"
 )
 
-header_col1, header_col2, header_col3 = st.columns([1, 1, 2])
-
-with header_col1:
-    st.caption("MSBA 610")
-
-with header_col2:
-    st.caption("Group 12")
-
-with header_col3:
-    st.caption("Natural Language Processing & Machine Learning")
-
 st.divider()
 
 
 # ============================================================
-# 4. NLTK SETUP
+# 3. NLTK SETUP
 # ============================================================
 
 @st.cache_resource
@@ -257,7 +89,7 @@ setup_nltk()
 
 
 # ============================================================
-# 5. TEXT CLEANING
+# 4. TEXT CLEANING
 # ============================================================
 
 def clean_text(text):
@@ -275,31 +107,39 @@ def clean_text(text):
 
 
 # ============================================================
-# 6. NLP OBJECTS
+# 5. NLP OBJECTS
 # ============================================================
 
-stop_words = set(stopwords.words("english"))
+stop_words = set(
+    stopwords.words("english")
+)
 
+# Preserve important negation words
 negation_words = {
     "no",
     "nor",
     "not"
 }
 
-stop_words = stop_words - negation_words
+stop_words = (
+    stop_words
+    - negation_words
+)
 
 lemmatizer = WordNetLemmatizer()
 
 
 # ============================================================
-# 7. TEXT PREPROCESSING
+# 6. TEXT PREPROCESSING FUNCTION
 # ============================================================
 
 def preprocess_text(text):
 
     cleaned = clean_text(text)
 
-    tokens = word_tokenize(cleaned)
+    tokens = word_tokenize(
+        cleaned
+    )
 
     filtered_tokens = [
         word
@@ -312,7 +152,9 @@ def preprocess_text(text):
         for word in filtered_tokens
     ]
 
-    processed_text = " ".join(lemmatized_tokens)
+    processed_text = " ".join(
+        lemmatized_tokens
+    )
 
     return (
         cleaned,
@@ -322,6 +164,10 @@ def preprocess_text(text):
         processed_text
     )
 
+
+# ============================================================
+# 7. PREPROCESS COMPLETE DATAFRAME
+# ============================================================
 
 @st.cache_data
 def preprocess_dataframe(data):
@@ -334,31 +180,43 @@ def preprocess_dataframe(data):
         .apply(preprocess_text)
     )
 
-    data["cleaned_text"] = results.apply(
-        lambda x: x[0]
+    data["cleaned_text"] = (
+        results.apply(
+            lambda x: x[0]
+        )
     )
 
-    data["tokens"] = results.apply(
-        lambda x: x[1]
+    data["tokens"] = (
+        results.apply(
+            lambda x: x[1]
+        )
     )
 
-    data["filtered_tokens"] = results.apply(
-        lambda x: x[2]
+    data["filtered_tokens"] = (
+        results.apply(
+            lambda x: x[2]
+        )
     )
 
-    data["lemmatized_tokens"] = results.apply(
-        lambda x: x[3]
+    data["lemmatized_tokens"] = (
+        results.apply(
+            lambda x: x[3]
+        )
     )
 
-    data["processed_text"] = results.apply(
-        lambda x: x[4]
+    data["processed_text"] = (
+        results.apply(
+            lambda x: x[4]
+        )
     )
 
     data["word_count"] = (
         data["feedback_text"]
         .astype(str)
         .apply(
-            lambda x: len(x.split())
+            lambda x: len(
+                x.split()
+            )
         )
     )
 
@@ -379,13 +237,15 @@ def load_project_data():
 
 try:
 
-    default_df = load_project_data()
+    default_df = (
+        load_project_data()
+    )
 
 except FileNotFoundError:
 
     st.error(
         "student_feedback_dataset.csv was not found. "
-        "Place it in the same folder as app.py."
+        "Place the file in the same folder as app.py."
     )
 
     st.stop()
@@ -400,10 +260,11 @@ st.sidebar.title(
 )
 
 st.sidebar.caption(
-    "Sentiment Analytics Platform"
+    "Analytics Dashboard"
 )
 
 st.sidebar.divider()
+
 
 st.sidebar.subheader(
     "Data Source"
@@ -411,7 +272,7 @@ st.sidebar.subheader(
 
 
 data_source = st.sidebar.radio(
-    "Choose the dataset used for analysis and model training",
+    "Choose the data used for analysis and training",
     [
         "Use Project Dataset",
         "Upload Labelled Dataset"
@@ -420,14 +281,16 @@ data_source = st.sidebar.radio(
 
 
 # ============================================================
-# 10. SELECT ACTIVE DATA
+# 10. CHOOSE ACTIVE DATASET
 # ============================================================
 
 if data_source == "Use Project Dataset":
 
     df = default_df.copy()
 
-    dataset_name = "Project Dataset"
+    dataset_name = (
+        "Project Dataset"
+    )
 
 
 else:
@@ -442,14 +305,16 @@ else:
 
 
     st.sidebar.caption(
-        "Required columns: feedback_text and sentiment_label"
+        "The uploaded file must contain "
+        "'feedback_text' and 'sentiment_label'."
     )
 
 
     if uploaded_training_file is None:
 
         st.info(
-            "Upload a labelled CSV file from the sidebar to continue."
+            "Upload a labelled CSV file from the sidebar "
+            "to continue."
         )
 
         st.stop()
@@ -470,7 +335,9 @@ else:
         st.stop()
 
 
-    dataset_name = uploaded_training_file.name
+    dataset_name = (
+        uploaded_training_file.name
+    )
 
 
 # ============================================================
@@ -500,6 +367,7 @@ if missing_columns:
     st.stop()
 
 
+# Remove unusable rows
 df = df.dropna(
     subset=[
         "feedback_text",
@@ -533,24 +401,37 @@ df = df[
 ].copy()
 
 
-if df["sentiment_label"].nunique() < 2:
+# ============================================================
+# 12. CHECK LABELS
+# ============================================================
+
+number_of_classes = (
+    df["sentiment_label"]
+    .nunique()
+)
+
+
+if number_of_classes < 2:
 
     st.error(
-        "The labelled dataset must contain at least two sentiment classes."
+        "The labelled dataset must contain at least "
+        "two different sentiment classes."
     )
 
     st.stop()
 
 
 # ============================================================
-# 12. PREPROCESS ACTIVE DATASET
+# 13. PREPROCESS ACTIVE DATASET
 # ============================================================
 
-df = preprocess_dataframe(df)
+df = preprocess_dataframe(
+    df
+)
 
 
 # ============================================================
-# 13. MODEL TRAINING
+# 14. TRAIN MODELS
 # ============================================================
 
 @st.cache_resource
@@ -565,7 +446,14 @@ def train_models(data):
     ]
 
 
-    class_counts = y.value_counts()
+    # --------------------------------------------------------
+    # STRATIFIED SPLIT WHERE POSSIBLE
+    # --------------------------------------------------------
+
+    class_counts = (
+        y.value_counts()
+    )
+
 
     can_stratify = (
         class_counts.min() >= 2
@@ -596,9 +484,9 @@ def train_models(data):
         )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # TF-IDF
-    # --------------------------------------------------------
+    # ========================================================
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
@@ -622,9 +510,9 @@ def train_models(data):
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # SVM
-    # --------------------------------------------------------
+    # ========================================================
 
     svm_model = SVC(
         kernel="linear",
@@ -654,9 +542,9 @@ def train_models(data):
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # WORD2VEC
-    # --------------------------------------------------------
+    # ========================================================
 
     train_tokens = (
         data.loc[
@@ -721,9 +609,9 @@ def train_models(data):
     ])
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # RANDOM FOREST
-    # --------------------------------------------------------
+    # ========================================================
 
     rf_model = RandomForestClassifier(
         n_estimators=300,
@@ -822,7 +710,7 @@ with st.spinner(
 
 
 # ============================================================
-# 14. METRICS
+# 15. METRICS
 # ============================================================
 
 def calculate_metrics(
@@ -862,11 +750,15 @@ def calculate_metrics(
     )
 
 
+    # ROC-AUC can fail when the uploaded
+    # test subset does not contain every class.
     try:
 
         if len(classes) == 2:
 
-            positive_class = classes[1]
+            positive_class = (
+                classes[1]
+            )
 
             binary_true = (
                 y_true
@@ -914,22 +806,34 @@ def calculate_metrics(
 
 svm_metrics = calculate_metrics(
     model_results["y_test"],
-    model_results["svm_predictions"],
-    model_results["svm_probabilities"],
-    model_results["svm_model"].classes_
+    model_results[
+        "svm_predictions"
+    ],
+    model_results[
+        "svm_probabilities"
+    ],
+    model_results[
+        "svm_model"
+    ].classes_
 )
 
 
 rf_metrics = calculate_metrics(
     model_results["y_test"],
-    model_results["rf_predictions"],
-    model_results["rf_probabilities"],
-    model_results["rf_model"].classes_
+    model_results[
+        "rf_predictions"
+    ],
+    model_results[
+        "rf_probabilities"
+    ],
+    model_results[
+        "rf_model"
+    ].classes_
 )
 
 
 # ============================================================
-# 15. MODEL COMPARISON
+# 16. MODEL COMPARISON
 # ============================================================
 
 model_comparison = pd.DataFrame({
@@ -940,28 +844,48 @@ model_comparison = pd.DataFrame({
     ],
 
     "Accuracy": [
-        svm_metrics["Accuracy"],
-        rf_metrics["Accuracy"]
+        svm_metrics[
+            "Accuracy"
+        ],
+        rf_metrics[
+            "Accuracy"
+        ]
     ],
 
     "Precision": [
-        svm_metrics["Precision"],
-        rf_metrics["Precision"]
+        svm_metrics[
+            "Precision"
+        ],
+        rf_metrics[
+            "Precision"
+        ]
     ],
 
     "Recall": [
-        svm_metrics["Recall"],
-        rf_metrics["Recall"]
+        svm_metrics[
+            "Recall"
+        ],
+        rf_metrics[
+            "Recall"
+        ]
     ],
 
     "Weighted F1": [
-        svm_metrics["Weighted F1"],
-        rf_metrics["Weighted F1"]
+        svm_metrics[
+            "Weighted F1"
+        ],
+        rf_metrics[
+            "Weighted F1"
+        ]
     ],
 
     "ROC-AUC": [
-        svm_metrics["ROC-AUC"],
-        rf_metrics["ROC-AUC"]
+        svm_metrics[
+            "ROC-AUC"
+        ],
+        rf_metrics[
+            "ROC-AUC"
+        ]
     ]
 })
 
@@ -977,7 +901,7 @@ selected_model = (
 
 
 # ============================================================
-# 16. LIVE PREDICTION MODEL
+# 17. TRAIN LIVE PREDICTION MODEL
 # ============================================================
 
 @st.cache_resource
@@ -1030,7 +954,7 @@ live_vectorizer, live_model = (
 
 
 # ============================================================
-# 17. SIDEBAR NAVIGATION
+# 18. SIDEBAR NAVIGATION
 # ============================================================
 
 st.sidebar.divider()
@@ -1052,9 +976,11 @@ page = st.sidebar.radio(
 
 st.sidebar.divider()
 
+
 st.sidebar.caption(
     f"Active data: {dataset_name}"
 )
+
 
 st.sidebar.caption(
     "Group 12 | MSBA 610"
@@ -1069,10 +995,6 @@ if page == "Overview":
 
     st.header(
         "Dataset Overview"
-    )
-
-    st.caption(
-        "A consolidated view of the active dataset and its sentiment structure."
     )
 
 
@@ -1146,64 +1068,60 @@ if page == "Overview":
 
     with left:
 
-        with st.container(
-            border=True
-        ):
-
-            st.subheader(
-                "Sentiment Distribution"
-            )
+        st.subheader(
+            "Sentiment Distribution"
+        )
 
 
-            fig, ax = plt.subplots(
-                figsize=(8, 4)
-            )
+        fig, ax = plt.subplots(
+            figsize=(8, 4)
+        )
 
 
-            sns.countplot(
-                data=df,
-                x="sentiment_label",
-                ax=ax
-            )
+        sns.countplot(
+            data=df,
+            x="sentiment_label",
+            ax=ax
+        )
 
 
-            ax.set_xlabel(
-                "Sentiment"
-            )
+        ax.set_xlabel(
+            "Sentiment"
+        )
 
 
-            ax.set_ylabel(
-                "Number of Records"
-            )
+        ax.set_ylabel(
+            "Number of Records"
+        )
 
 
-            sns.despine()
+        sns.despine()
 
 
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     with right:
 
+        st.subheader(
+            "Dataset Profile"
+        )
+
+
+        class_counts = (
+            df[
+                "sentiment_label"
+            ]
+            .value_counts()
+        )
+
+
         with st.container(
             border=True
         ):
-
-            st.subheader(
-                "Dataset Profile"
-            )
-
-
-            class_counts = (
-                df[
-                    "sentiment_label"
-                ]
-                .value_counts()
-            )
-
 
             for class_name, count in (
                 class_counts.items()
@@ -1218,49 +1136,32 @@ if page == "Overview":
     st.divider()
 
 
-    col_left, col_right = (
-        st.columns(2)
-    )
+    if "emotion_tag" in df.columns:
+
+        st.subheader(
+            "Emotion Distribution"
+        )
 
 
-    with col_left:
-
-        if "emotion_tag" in df.columns:
-
-            with st.container(
-                border=True
-            ):
-
-                st.subheader(
-                    "Emotion Distribution"
-                )
+        st.bar_chart(
+            df[
+                "emotion_tag"
+            ].value_counts()
+        )
 
 
-                st.bar_chart(
-                    df[
-                        "emotion_tag"
-                    ].value_counts()
-                )
+    if "feedback_type" in df.columns:
+
+        st.subheader(
+            "Feedback Type"
+        )
 
 
-    with col_right:
-
-        if "feedback_type" in df.columns:
-
-            with st.container(
-                border=True
-            ):
-
-                st.subheader(
-                    "Feedback Type"
-                )
-
-
-                st.bar_chart(
-                    df[
-                        "feedback_type"
-                    ].value_counts()
-                )
+        st.bar_chart(
+            df[
+                "feedback_type"
+            ].value_counts()
+        )
 
 
 # ============================================================
@@ -1275,9 +1176,12 @@ elif page == "Data Explorer":
 
 
     st.caption(
-        "Filter and inspect individual records from the active dataset."
+        "Inspect the active dataset."
     )
 
+
+    # Build filters only where
+    # the uploaded dataset contains those fields.
 
     filtered_df = (
         df.copy()
@@ -1308,54 +1212,57 @@ elif page == "Data Explorer":
         )
 
 
-    if available_filters:
-
-        filter_columns = st.columns(
-            len(
-                available_filters
+    filter_columns = (
+        st.columns(
+            max(
+                1,
+                len(
+                    available_filters
+                )
             )
+        )
+    )
+
+
+    for index, column in enumerate(
+        available_filters
+    ):
+
+        options = [
+            "All"
+        ] + sorted(
+            df[column]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
         )
 
 
-        for index, column in enumerate(
-            available_filters
-        ):
+        with filter_columns[index]:
 
-            options = [
-                "All"
-            ] + sorted(
-                df[column]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
+            selection = (
+                st.selectbox(
+                    column.replace(
+                        "_",
+                        " "
+                    ).title(),
+                    options,
+                    key=f"filter_{column}"
+                )
             )
 
 
-            with filter_columns[index]:
+        if selection != "All":
 
-                selection = (
-                    st.selectbox(
-                        column.replace(
-                            "_",
-                            " "
-                        ).title(),
-                        options,
-                        key=f"filter_{column}"
-                    )
-                )
-
-
-            if selection != "All":
-
-                filtered_df = (
+            filtered_df = (
+                filtered_df[
                     filtered_df[
-                        filtered_df[
-                            column
-                        ].astype(str)
-                        == selection
-                    ]
-                )
+                        column
+                    ].astype(str)
+                    == selection
+                ]
+            )
 
 
     st.metric(
@@ -1383,17 +1290,13 @@ elif page == "Data Explorer":
     ]
 
 
-    with st.container(
-        border=True
-    ):
-
-        st.dataframe(
-            filtered_df[
-                display_columns
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
+    st.dataframe(
+        filtered_df[
+            display_columns
+        ],
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ============================================================
@@ -1408,7 +1311,7 @@ elif page == "Text Preprocessing":
 
 
     st.caption(
-        "Transforming raw student feedback into consistent model-ready text."
+        "Transforming raw feedback into clean model-ready text."
     )
 
 
@@ -1444,7 +1347,7 @@ elif page == "Text Preprocessing":
             )
 
             st.write(
-                "Feedback text is split into individual word tokens using NLTK."
+                "Feedback text is split into individual word tokens."
             )
 
 
@@ -1459,7 +1362,8 @@ elif page == "Text Preprocessing":
             )
 
             st.write(
-                "Common English words are removed while no, nor and not are retained."
+                "Common English words are removed while no, nor and "
+                "not are retained."
             )
 
 
@@ -1479,7 +1383,7 @@ elif page == "Text Preprocessing":
             )
 
             st.write(
-                "Words are reduced towards their base or dictionary form."
+                "Words are reduced towards their base forms."
             )
 
 
@@ -1494,7 +1398,7 @@ elif page == "Text Preprocessing":
             )
 
             st.write(
-                "Processed tokens are reconstructed into the final model-ready text."
+                "Processed tokens are joined into model-ready text."
             )
 
 
@@ -1514,23 +1418,19 @@ elif page == "Text Preprocessing":
     )
 
 
-    with st.container(
-        border=True
-    ):
-
-        st.dataframe(
-            df[
-                [
-                    "feedback_text",
-                    "cleaned_text",
-                    "processed_text"
-                ]
-            ].head(
-                sample_size
-            ),
-            use_container_width=True,
-            hide_index=True
-        )
+    st.dataframe(
+        df[
+            [
+                "feedback_text",
+                "cleaned_text",
+                "processed_text"
+            ]
+        ].head(
+            sample_size
+        ),
+        use_container_width=True,
+        hide_index=True
+    )
 
 
     st.divider()
@@ -1541,37 +1441,37 @@ elif page == "Text Preprocessing":
     )
 
 
-    with st.container(
-        border=True
-    ):
+    example_text = (
+        st.text_input(
+            "Enter sample feedback",
+            "The Lecturer was VERY helpful!!!"
+        )
+    )
 
-        example_text = (
-            st.text_input(
-                "Enter sample feedback",
-                "The Lecturer was VERY helpful!!!"
-            )
+
+    if example_text:
+
+        (
+            cleaned,
+            tokens,
+            filtered,
+            lemmatized,
+            processed
+        ) = preprocess_text(
+            example_text
         )
 
 
-        if example_text:
-
-            (
-                cleaned,
-                tokens,
-                filtered,
-                lemmatized,
-                processed
-            ) = preprocess_text(
-                example_text
-            )
+        col1, col2 = (
+            st.columns(2)
+        )
 
 
-            col1, col2 = (
-                st.columns(2)
-            )
+        with col1:
 
-
-            with col1:
+            with st.container(
+                border=True
+            ):
 
                 st.write(
                     "**Original Text**"
@@ -1591,7 +1491,11 @@ elif page == "Text Preprocessing":
                 )
 
 
-            with col2:
+        with col2:
+
+            with st.container(
+                border=True
+            ):
 
                 st.write(
                     "**Final Processed Text**"
@@ -1602,39 +1506,39 @@ elif page == "Text Preprocessing":
                 )
 
 
-            with st.expander(
-                "View intermediate stages"
-            ):
+        with st.expander(
+            "View intermediate stages"
+        ):
 
-                st.write(
-                    "**Tokens**"
-                )
+            st.write(
+                "**Tokens**"
+            )
 
-                st.write(
-                    tokens
-                )
-
-
-                st.write(
-                    "**After Stopword Removal**"
-                )
-
-                st.write(
-                    filtered
-                )
+            st.write(
+                tokens
+            )
 
 
-                st.write(
-                    "**After Lemmatisation**"
-                )
+            st.write(
+                "**After Stopword Removal**"
+            )
 
-                st.write(
-                    lemmatized
-                )
+            st.write(
+                filtered
+            )
+
+
+            st.write(
+                "**After Lemmatisation**"
+            )
+
+            st.write(
+                lemmatized
+            )
 
 
 # ============================================================
-# PAGE 4 - EDA
+# PAGE 4 - EXPLORATORY TEXT ANALYTICS
 # ============================================================
 
 elif page == "Exploratory Text Analytics":
@@ -1645,7 +1549,7 @@ elif page == "Exploratory Text Analytics":
 
 
     st.caption(
-        "Exploring vocabulary, feedback length and relationships within the active dataset."
+        "Exploring word usage and relationships in the active dataset."
     )
 
 
@@ -1679,68 +1583,60 @@ elif page == "Exploratory Text Analytics":
 
     with col1:
 
-        with st.container(
-            border=True
-        ):
-
-            st.subheader(
-                "Most Frequent Words"
-            )
+        st.subheader(
+            "Most Frequent Words"
+        )
 
 
-            fig, ax = plt.subplots(
-                figsize=(7, 5)
-            )
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
 
 
-            sns.barplot(
-                data=top_words,
-                x="Frequency",
-                y="Word",
-                ax=ax
-            )
+        sns.barplot(
+            data=top_words,
+            x="Frequency",
+            y="Word",
+            ax=ax
+        )
 
 
-            sns.despine()
+        sns.despine()
 
 
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     with col2:
 
-        with st.container(
-            border=True
-        ):
-
-            st.subheader(
-                "Feedback Length"
-            )
+        st.subheader(
+            "Feedback Length"
+        )
 
 
-            fig, ax = plt.subplots(
-                figsize=(7, 5)
-            )
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
 
 
-            sns.histplot(
-                data=df,
-                x="word_count",
-                bins=15,
-                ax=ax
-            )
+        sns.histplot(
+            data=df,
+            x="word_count",
+            bins=15,
+            ax=ax
+        )
 
 
-            sns.despine()
+        sns.despine()
 
 
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     st.divider()
@@ -1748,90 +1644,78 @@ elif page == "Exploratory Text Analytics":
 
     if "emotion_tag" in df.columns:
 
-        with st.container(
-            border=True
-        ):
+        st.subheader(
+            "Emotion vs Sentiment"
+        )
 
-            st.subheader(
-                "Emotion vs Sentiment"
+
+        emotion_sentiment = (
+            pd.crosstab(
+                df[
+                    "emotion_tag"
+                ],
+                df[
+                    "sentiment_label"
+                ]
             )
+        )
 
 
-            emotion_sentiment = (
-                pd.crosstab(
-                    df[
-                        "emotion_tag"
-                    ],
-                    df[
-                        "sentiment_label"
-                    ]
-                )
-            )
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
 
 
-            fig, ax = plt.subplots(
-                figsize=(7, 5)
-            )
+        sns.heatmap(
+            emotion_sentiment,
+            annot=True,
+            fmt="d",
+            ax=ax
+        )
 
 
-            sns.heatmap(
-                emotion_sentiment,
-                annot=True,
-                fmt="d",
-                ax=ax
-            )
-
-
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     if "department" in df.columns:
 
-        with st.container(
-            border=True
-        ):
+        st.subheader(
+            "Sentiment by Department"
+        )
 
-            st.subheader(
-                "Sentiment by Department"
+
+        st.bar_chart(
+            pd.crosstab(
+                df[
+                    "department"
+                ],
+                df[
+                    "sentiment_label"
+                ]
             )
-
-
-            st.bar_chart(
-                pd.crosstab(
-                    df[
-                        "department"
-                    ],
-                    df[
-                        "sentiment_label"
-                    ]
-                )
-            )
+        )
 
 
     if "feedback_type" in df.columns:
 
-        with st.container(
-            border=True
-        ):
+        st.subheader(
+            "Sentiment by Feedback Type"
+        )
 
-            st.subheader(
-                "Sentiment by Feedback Type"
+
+        st.bar_chart(
+            pd.crosstab(
+                df[
+                    "feedback_type"
+                ],
+                df[
+                    "sentiment_label"
+                ]
             )
-
-
-            st.bar_chart(
-                pd.crosstab(
-                    df[
-                        "feedback_type"
-                    ],
-                    df[
-                        "sentiment_label"
-                    ]
-                )
-            )
+        )
 
 
 # ============================================================
@@ -1846,30 +1730,23 @@ elif page == "Model Performance":
 
 
     st.caption(
-        "Comparing TF-IDF + SVM with Word2Vec + Random Forest."
+        "Comparison of TF-IDF + SVM and Word2Vec + Random Forest."
     )
 
 
-    with st.container(
-        border=True
-    ):
+    st.subheader(
+        "Performance Summary"
+    )
 
-        st.subheader(
-            "Performance Summary"
+
+    st.dataframe(
+        model_comparison
+        .set_index(
+            "Model"
         )
-
-
-        st.dataframe(
-            model_comparison
-            .set_index(
-                "Model"
-            )
-            .round(4),
-            use_container_width=True
-        )
-
-
-    st.divider()
+        .round(4),
+        use_container_width=True
+    )
 
 
     with st.container(
@@ -1880,9 +1757,8 @@ elif page == "Model Performance":
             "Selected Model"
         )
 
-        st.metric(
-            "Best Model by Weighted F1",
-            selected_model
+        st.write(
+            f"**{selected_model}**"
         )
 
         st.write(
@@ -1893,58 +1769,54 @@ elif page == "Model Performance":
     st.divider()
 
 
-    with st.container(
-        border=True
-    ):
+    st.subheader(
+        "Metric Comparison"
+    )
 
-        st.subheader(
-            "Metric Comparison"
+
+    comparison_long = (
+        model_comparison
+        .melt(
+            id_vars="Model",
+            var_name="Metric",
+            value_name="Score"
         )
+    )
 
 
-        comparison_long = (
-            model_comparison
-            .melt(
-                id_vars="Model",
-                var_name="Metric",
-                value_name="Score"
-            )
+    fig, ax = plt.subplots(
+        figsize=(9, 5)
+    )
+
+
+    sns.barplot(
+        data=comparison_long,
+        x="Metric",
+        y="Score",
+        hue="Model",
+        ax=ax
+    )
+
+
+    ax.set_ylim(
+        0,
+        max(
+            1,
+            comparison_long[
+                "Score"
+            ].max()
+            + 0.1
         )
+    )
 
 
-        fig, ax = plt.subplots(
-            figsize=(9, 5)
-        )
+    sns.despine()
 
 
-        sns.barplot(
-            data=comparison_long,
-            x="Metric",
-            y="Score",
-            hue="Model",
-            ax=ax
-        )
-
-
-        ax.set_ylim(
-            0,
-            max(
-                1,
-                comparison_long[
-                    "Score"
-                ].max()
-                + 0.1
-            )
-        )
-
-
-        sns.despine()
-
-
-        st.pyplot(
-            fig,
-            use_container_width=True
-        )
+    st.pyplot(
+        fig,
+        use_container_width=True
+    )
 
 
     st.divider()
@@ -1962,124 +1834,116 @@ elif page == "Model Performance":
 
     with col1:
 
-        with st.container(
-            border=True
-        ):
-
-            st.write(
-                "**TF-IDF + SVM**"
-            )
+        st.write(
+            "**TF-IDF + SVM**"
+        )
 
 
-            cm_svm = (
-                confusion_matrix(
-                    model_results[
-                        "y_test"
-                    ],
-                    model_results[
-                        "svm_predictions"
-                    ],
-                    labels=model_results[
-                        "svm_model"
-                    ].classes_
-                )
-            )
-
-
-            fig, ax = plt.subplots(
-                figsize=(6, 5)
-            )
-
-
-            sns.heatmap(
-                cm_svm,
-                annot=True,
-                fmt="d",
-                xticklabels=model_results[
+        cm_svm = (
+            confusion_matrix(
+                model_results[
+                    "y_test"
+                ],
+                model_results[
+                    "svm_predictions"
+                ],
+                labels=model_results[
                     "svm_model"
-                ].classes_,
-                yticklabels=model_results[
-                    "svm_model"
-                ].classes_,
-                ax=ax
+                ].classes_
             )
+        )
 
 
-            ax.set_xlabel(
-                "Predicted"
-            )
+        fig, ax = plt.subplots(
+            figsize=(6, 5)
+        )
 
 
-            ax.set_ylabel(
-                "Actual"
-            )
+        sns.heatmap(
+            cm_svm,
+            annot=True,
+            fmt="d",
+            xticklabels=model_results[
+                "svm_model"
+            ].classes_,
+            yticklabels=model_results[
+                "svm_model"
+            ].classes_,
+            ax=ax
+        )
 
 
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        ax.set_xlabel(
+            "Predicted"
+        )
+
+
+        ax.set_ylabel(
+            "Actual"
+        )
+
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     with col2:
 
-        with st.container(
-            border=True
-        ):
-
-            st.write(
-                "**Word2Vec + Random Forest**"
-            )
+        st.write(
+            "**Word2Vec + Random Forest**"
+        )
 
 
-            cm_rf = (
-                confusion_matrix(
-                    model_results[
-                        "y_test"
-                    ],
-                    model_results[
-                        "rf_predictions"
-                    ],
-                    labels=model_results[
-                        "rf_model"
-                    ].classes_
-                )
-            )
-
-
-            fig, ax = plt.subplots(
-                figsize=(6, 5)
-            )
-
-
-            sns.heatmap(
-                cm_rf,
-                annot=True,
-                fmt="d",
-                xticklabels=model_results[
+        cm_rf = (
+            confusion_matrix(
+                model_results[
+                    "y_test"
+                ],
+                model_results[
+                    "rf_predictions"
+                ],
+                labels=model_results[
                     "rf_model"
-                ].classes_,
-                yticklabels=model_results[
-                    "rf_model"
-                ].classes_,
-                ax=ax
+                ].classes_
             )
+        )
 
 
-            ax.set_xlabel(
-                "Predicted"
-            )
+        fig, ax = plt.subplots(
+            figsize=(6, 5)
+        )
 
 
-            ax.set_ylabel(
-                "Actual"
-            )
+        sns.heatmap(
+            cm_rf,
+            annot=True,
+            fmt="d",
+            xticklabels=model_results[
+                "rf_model"
+            ].classes_,
+            yticklabels=model_results[
+                "rf_model"
+            ].classes_,
+            ax=ax
+        )
 
 
-            st.pyplot(
-                fig,
-                use_container_width=True
-            )
+        ax.set_xlabel(
+            "Predicted"
+        )
+
+
+        ax.set_ylabel(
+            "Actual"
+        )
+
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
 # ============================================================
@@ -2094,36 +1958,27 @@ elif page == "Live Prediction":
 
 
     st.caption(
-        "Enter one student feedback comment and classify its predicted sentiment."
+        "Enter one feedback comment and predict its sentiment."
     )
 
 
-    with st.container(
-        border=True
+    new_feedback = (
+        st.text_area(
+            "Student Feedback",
+            height=150,
+            placeholder=(
+                "Example: The lecturer explains the topics clearly "
+                "and the course is very helpful."
+            )
+        )
+    )
+
+
+    if st.button(
+        "Predict Sentiment",
+        type="primary",
+        use_container_width=True
     ):
-
-        new_feedback = (
-            st.text_area(
-                "Student Feedback",
-                height=150,
-                placeholder=(
-                    "Example: The lecturer explains the topics clearly "
-                    "and the course is very helpful."
-                )
-            )
-        )
-
-
-        predict_button = (
-            st.button(
-                "Predict Sentiment",
-                type="primary",
-                use_container_width=True
-            )
-        )
-
-
-    if predict_button:
 
         if not new_feedback.strip():
 
@@ -2169,69 +2024,53 @@ elif page == "Live Prediction":
             )
 
 
-            st.divider()
+            st.subheader(
+                "Prediction Result"
+            )
 
 
-            with st.container(
-                border=True
-            ):
+            st.metric(
+                "Predicted Sentiment",
+                prediction.title()
+            )
 
-                st.subheader(
-                    "Prediction Result"
+
+            probability_df = (
+                pd.DataFrame(
+                    {
+                        "Sentiment":
+                        live_model.classes_,
+
+                        "Probability":
+                        probabilities
+                    }
                 )
+            )
 
 
-                st.metric(
-                    "Predicted Sentiment",
-                    prediction.title()
-                )
-
-
-                probability_df = (
-                    pd.DataFrame(
-                        {
-                            "Sentiment":
-                            live_model.classes_,
-
-                            "Probability":
-                            probabilities
-                        }
-                    )
-                )
-
-
+            probability_df[
+                "Probability"
+            ] = (
                 probability_df[
                     "Probability"
-                ] = (
-                    probability_df[
-                        "Probability"
-                    ]
-                    * 100
-                ).round(2)
+                ]
+                * 100
+            ).round(2)
 
 
-                col1, col2 = (
-                    st.columns(2)
+            st.dataframe(
+                probability_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+
+            st.bar_chart(
+                probability_df
+                .set_index(
+                    "Sentiment"
                 )
-
-
-                with col1:
-
-                    st.dataframe(
-                        probability_df,
-                        use_container_width=True,
-                        hide_index=True
-                    )
-
-
-                with col2:
-
-                    st.bar_chart(
-                        probability_df
-                        .set_index(
-                            "Sentiment"
-                        )
-                    )
+            )
 
 
 # ============================================================
@@ -2246,31 +2085,24 @@ elif page == "Batch Prediction":
 
 
     st.caption(
-        "Upload a CSV containing feedback comments and predict sentiment for every row."
+        "Upload a CSV containing feedback comments and predict "
+        "sentiment for every row."
     )
 
 
-    with st.container(
-        border=True
-    ):
+    st.info(
+        "The prediction file only needs one required column: "
+        "'feedback_text'."
+    )
 
-        st.subheader(
-            "Prediction File"
+
+    prediction_file = (
+        st.file_uploader(
+            "Upload CSV for prediction",
+            type=["csv"],
+            key="batch_prediction_upload"
         )
-
-        st.write(
-            "Upload a CSV containing a column named `feedback_text`. "
-            "The trained SVM model will predict the sentiment of each row."
-        )
-
-
-        prediction_file = (
-            st.file_uploader(
-                "Upload CSV for prediction",
-                type=["csv"],
-                key="batch_prediction_upload"
-            )
-        )
+    )
 
 
     if prediction_file is not None:
@@ -2305,45 +2137,31 @@ elif page == "Batch Prediction":
             st.stop()
 
 
-        st.divider()
+        st.subheader(
+            "Uploaded Feedback"
+        )
 
 
-        with st.container(
-            border=True
+        st.dataframe(
+            prediction_df.head(
+                20
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        st.write(
+            f"Rows ready for prediction: "
+            f"**{len(prediction_df):,}**"
+        )
+
+
+        if st.button(
+            "Run Batch Prediction",
+            type="primary",
+            use_container_width=True
         ):
-
-            st.subheader(
-                "Uploaded Feedback"
-            )
-
-
-            st.dataframe(
-                prediction_df.head(
-                    20
-                ),
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-            st.metric(
-                "Rows Ready for Prediction",
-                len(
-                    prediction_df
-                )
-            )
-
-
-            run_batch = (
-                st.button(
-                    "Run Batch Prediction",
-                    type="primary",
-                    use_container_width=True
-                )
-            )
-
-
-        if run_batch:
 
             with st.spinner(
                 "Predicting sentiment..."
@@ -2399,6 +2217,7 @@ elif page == "Batch Prediction":
                 )
 
 
+                # Highest predicted class probability
                 batch_results[
                     "prediction_confidence"
                 ] = (
@@ -2409,6 +2228,7 @@ elif page == "Batch Prediction":
                 ).round(2)
 
 
+                # Add probability for each class
                 for index, class_name in enumerate(
                     live_model.classes_
                 ):
@@ -2429,81 +2249,53 @@ elif page == "Batch Prediction":
             )
 
 
-            with st.container(
-                border=True
-            ):
+            st.subheader(
+                "Prediction Results"
+            )
 
-                st.subheader(
-                    "Prediction Results"
+
+            st.dataframe(
+                batch_results,
+                use_container_width=True,
+                hide_index=True
+            )
+
+
+            st.subheader(
+                "Predicted Sentiment Distribution"
+            )
+
+
+            st.bar_chart(
+                batch_results[
+                    "predicted_sentiment"
+                ]
+                .value_counts()
+            )
+
+
+            csv_output = (
+                batch_results
+                .to_csv(
+                    index=False
                 )
-
-
-                st.dataframe(
-                    batch_results,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-
-            col1, col2 = (
-                st.columns(
-                    [1.2, 0.8]
+                .encode(
+                    "utf-8"
                 )
             )
 
 
-            with col1:
-
-                with st.container(
-                    border=True
-                ):
-
-                    st.subheader(
-                        "Predicted Sentiment Distribution"
-                    )
-
-
-                    st.bar_chart(
-                        batch_results[
-                            "predicted_sentiment"
-                        ]
-                        .value_counts()
-                    )
-
-
-            with col2:
-
-                with st.container(
-                    border=True
-                ):
-
-                    st.subheader(
-                        "Export Results"
-                    )
-
-
-                    csv_output = (
-                        batch_results
-                        .to_csv(
-                            index=False
-                        )
-                        .encode(
-                            "utf-8"
-                        )
-                    )
-
-
-                    st.download_button(
-                        label=(
-                            "Download Prediction Results"
-                        ),
-                        data=csv_output,
-                        file_name=(
-                            "student_feedback_predictions.csv"
-                        ),
-                        mime="text/csv",
-                        use_container_width=True
-                    )
+            st.download_button(
+                label=(
+                    "Download Prediction Results"
+                ),
+                data=csv_output,
+                file_name=(
+                    "student_feedback_predictions.csv"
+                ),
+                mime="text/csv",
+                use_container_width=True
+            )
 
 
 # ============================================================
