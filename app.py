@@ -1,6 +1,6 @@
 # ============================================================
 # GROUP 12 - STUDENT FEEDBACK ANALYTICS
-# Streamlit Application
+# STREAMLIT APPLICATION
 # ============================================================
 
 import streamlit as st
@@ -18,7 +18,7 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 
@@ -34,78 +34,58 @@ from sklearn.metrics import (
 )
 
 from sklearn.preprocessing import label_binarize
-
 from gensim.models import Word2Vec
 
 
 # ============================================================
-# 1. STREAMLIT PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
     page_title="Student Feedback Analytics",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+
+# ============================================================
+# 2. HEADER
+# ============================================================
 
 st.title("Student Feedback Analytics")
 
 st.caption(
-    "Sentiment Classification using TF-IDF + Support Vector Machine "
+    "Sentiment classification using TF-IDF + Support Vector Machine "
     "and Word2Vec + Random Forest"
 )
 
+st.divider()
+
 
 # ============================================================
-# 2. NLTK RESOURCE CHECK
+# 3. NLTK SETUP
 # ============================================================
 
-def ensure_nltk_resource(resource_name, resource_path):
-    """
-    Check whether an NLTK resource exists.
-    If not, attempt to download it.
-    """
-    try:
-        nltk.data.find(resource_path)
-    except LookupError:
+@st.cache_resource
+def setup_nltk():
+
+    resources = [
+        "punkt",
+        "punkt_tab",
+        "stopwords",
+        "wordnet",
+        "omw-1.4"
+    ]
+
+    for resource in resources:
         try:
-            nltk.download(resource_name, quiet=True)
+            nltk.download(resource, quiet=True)
         except Exception:
             pass
 
 
-ensure_nltk_resource("punkt", "tokenizers/punkt")
-ensure_nltk_resource("punkt_tab", "tokenizers/punkt_tab")
-ensure_nltk_resource("stopwords", "corpora/stopwords")
-ensure_nltk_resource("wordnet", "corpora/wordnet")
-ensure_nltk_resource("omw-1.4", "corpora/omw-1.4")
-
-
-# ============================================================
-# 3. LOAD DATA
-# ============================================================
-
-@st.cache_data
-def load_data():
-    return pd.read_csv("student_feedback_dataset.csv")
-
-
-try:
-    df = load_data()
-
-except FileNotFoundError:
-
-    st.error(
-        "student_feedback_dataset.csv was not found. "
-        "Place the CSV file in the same folder as app.py."
-    )
-
-    st.stop()
-
-
-if df.empty:
-    st.error("The dataset is empty.")
-    st.stop()
+setup_nltk()
 
 
 # ============================================================
@@ -113,28 +93,14 @@ if df.empty:
 # ============================================================
 
 def clean_text(text):
-    """
-    Clean raw feedback using regular expressions.
-    """
 
     text = str(text).lower()
 
-    # Remove HTML
     text = re.sub(r"<.*?>", " ", text)
-
-    # Remove URLs
     text = re.sub(r"http\S+|www\S+", " ", text)
-
-    # Remove email addresses
     text = re.sub(r"\S+@\S+", " ", text)
-
-    # Remove numbers
     text = re.sub(r"\d+", " ", text)
-
-    # Keep alphabetic characters and spaces
     text = re.sub(r"[^a-zA-Z\s]", " ", text)
-
-    # Remove extra spaces
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
@@ -144,18 +110,21 @@ def clean_text(text):
 # 5. NLP OBJECTS
 # ============================================================
 
-try:
-    stop_words = set(stopwords.words("english"))
+stop_words = set(
+    stopwords.words("english")
+)
 
-except LookupError:
-    nltk.download("stopwords")
-    stop_words = set(stopwords.words("english"))
+# Preserve important negation words
+negation_words = {
+    "no",
+    "nor",
+    "not"
+}
 
-
-# Preserve negation words because they are important in sentiment
-negation_words = {"no", "nor", "not"}
-
-stop_words = stop_words - negation_words
+stop_words = (
+    stop_words
+    - negation_words
+)
 
 lemmatizer = WordNetLemmatizer()
 
@@ -168,13 +137,9 @@ def preprocess_text(text):
 
     cleaned = clean_text(text)
 
-    try:
-        tokens = word_tokenize(cleaned)
-
-    except LookupError:
-        nltk.download("punkt")
-        nltk.download("punkt_tab")
-        tokens = word_tokenize(cleaned)
+    tokens = word_tokenize(
+        cleaned
+    )
 
     filtered_tokens = [
         word
@@ -187,7 +152,9 @@ def preprocess_text(text):
         for word in filtered_tokens
     ]
 
-    processed_text = " ".join(lemmatized_tokens)
+    processed_text = " ".join(
+        lemmatized_tokens
+    )
 
     return (
         cleaned,
@@ -207,66 +174,319 @@ def preprocess_dataframe(data):
 
     data = data.copy()
 
-    results = data["feedback_text"].apply(preprocess_text)
-
-    data["cleaned_text"] = results.apply(
-        lambda x: x[0]
+    results = (
+        data["feedback_text"]
+        .astype(str)
+        .apply(preprocess_text)
     )
 
-    data["tokens"] = results.apply(
-        lambda x: x[1]
+    data["cleaned_text"] = (
+        results.apply(
+            lambda x: x[0]
+        )
     )
 
-    data["filtered_tokens"] = results.apply(
-        lambda x: x[2]
+    data["tokens"] = (
+        results.apply(
+            lambda x: x[1]
+        )
     )
 
-    data["lemmatized_tokens"] = results.apply(
-        lambda x: x[3]
+    data["filtered_tokens"] = (
+        results.apply(
+            lambda x: x[2]
+        )
     )
 
-    data["processed_text"] = results.apply(
-        lambda x: x[4]
+    data["lemmatized_tokens"] = (
+        results.apply(
+            lambda x: x[3]
+        )
+    )
+
+    data["processed_text"] = (
+        results.apply(
+            lambda x: x[4]
+        )
     )
 
     data["word_count"] = (
         data["feedback_text"]
         .astype(str)
-        .apply(lambda x: len(x.split()))
+        .apply(
+            lambda x: len(
+                x.split()
+            )
+        )
     )
 
     return data
 
 
-df = preprocess_dataframe(df)
-
-
 # ============================================================
-# 8. MODEL TRAINING AND EVALUATION
+# 8. LOAD DEFAULT PROJECT DATA
 # ============================================================
 
-@st.cache_resource
-def train_evaluation_models(data):
+@st.cache_data
+def load_project_data():
 
-    # --------------------------------------------------------
-    # Train/Test Split
-    # --------------------------------------------------------
-
-    X = data["processed_text"]
-    y = data["sentiment_label"]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.20,
-        random_state=42,
-        stratify=y
+    return pd.read_csv(
+        "student_feedback_dataset.csv"
     )
 
 
+try:
+
+    default_df = (
+        load_project_data()
+    )
+
+except FileNotFoundError:
+
+    st.error(
+        "student_feedback_dataset.csv was not found. "
+        "Place the file in the same folder as app.py."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# 9. SIDEBAR - DATA SOURCE
+# ============================================================
+
+st.sidebar.title(
+    "Student Feedback"
+)
+
+st.sidebar.caption(
+    "Analytics Dashboard"
+)
+
+st.sidebar.divider()
+
+
+st.sidebar.subheader(
+    "Data Source"
+)
+
+
+data_source = st.sidebar.radio(
+    "Choose the data used for analysis and training",
+    [
+        "Use Project Dataset",
+        "Upload Labelled Dataset"
+    ]
+)
+
+
+# ============================================================
+# 10. CHOOSE ACTIVE DATASET
+# ============================================================
+
+if data_source == "Use Project Dataset":
+
+    df = default_df.copy()
+
+    dataset_name = (
+        "Project Dataset"
+    )
+
+
+else:
+
+    uploaded_training_file = (
+        st.sidebar.file_uploader(
+            "Upload labelled CSV",
+            type=["csv"],
+            key="training_upload"
+        )
+    )
+
+
+    st.sidebar.caption(
+        "The uploaded file must contain "
+        "'feedback_text' and 'sentiment_label'."
+    )
+
+
+    if uploaded_training_file is None:
+
+        st.info(
+            "Upload a labelled CSV file from the sidebar "
+            "to continue."
+        )
+
+        st.stop()
+
+
+    try:
+
+        df = pd.read_csv(
+            uploaded_training_file
+        )
+
+    except Exception as error:
+
+        st.error(
+            f"The CSV could not be read: {error}"
+        )
+
+        st.stop()
+
+
+    dataset_name = (
+        uploaded_training_file.name
+    )
+
+
+# ============================================================
+# 11. DATASET VALIDATION
+# ============================================================
+
+required_training_columns = [
+    "feedback_text",
+    "sentiment_label"
+]
+
+
+missing_columns = [
+    column
+    for column in required_training_columns
+    if column not in df.columns
+]
+
+
+if missing_columns:
+
+    st.error(
+        "The selected dataset is missing required columns: "
+        + ", ".join(missing_columns)
+    )
+
+    st.stop()
+
+
+# Remove unusable rows
+df = df.dropna(
+    subset=[
+        "feedback_text",
+        "sentiment_label"
+    ]
+).copy()
+
+
+df["feedback_text"] = (
+    df["feedback_text"]
+    .astype(str)
+    .str.strip()
+)
+
+
+df["sentiment_label"] = (
+    df["sentiment_label"]
+    .astype(str)
+    .str.strip()
+    .str.lower()
+)
+
+
+df = df[
+    df["feedback_text"] != ""
+].copy()
+
+
+df = df[
+    df["sentiment_label"] != ""
+].copy()
+
+
+# ============================================================
+# 12. CHECK LABELS
+# ============================================================
+
+number_of_classes = (
+    df["sentiment_label"]
+    .nunique()
+)
+
+
+if number_of_classes < 2:
+
+    st.error(
+        "The labelled dataset must contain at least "
+        "two different sentiment classes."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# 13. PREPROCESS ACTIVE DATASET
+# ============================================================
+
+df = preprocess_dataframe(
+    df
+)
+
+
+# ============================================================
+# 14. TRAIN MODELS
+# ============================================================
+
+@st.cache_resource
+def train_models(data):
+
+    X = data[
+        "processed_text"
+    ]
+
+    y = data[
+        "sentiment_label"
+    ]
+
+
     # --------------------------------------------------------
+    # STRATIFIED SPLIT WHERE POSSIBLE
+    # --------------------------------------------------------
+
+    class_counts = (
+        y.value_counts()
+    )
+
+
+    can_stratify = (
+        class_counts.min() >= 2
+    )
+
+
+    if can_stratify:
+
+        X_train, X_test, y_train, y_test = (
+            train_test_split(
+                X,
+                y,
+                test_size=0.20,
+                random_state=42,
+                stratify=y
+            )
+        )
+
+    else:
+
+        X_train, X_test, y_train, y_test = (
+            train_test_split(
+                X,
+                y,
+                test_size=0.20,
+                random_state=42
+            )
+        )
+
+
+    # ========================================================
     # TF-IDF
-    # --------------------------------------------------------
+    # ========================================================
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
@@ -275,15 +495,24 @@ def train_evaluation_models(data):
         sublinear_tf=True
     )
 
-    X_train_tfidf = tfidf.fit_transform(X_train)
 
-    X_test_tfidf = tfidf.transform(X_test)
+    X_train_tfidf = (
+        tfidf.fit_transform(
+            X_train
+        )
+    )
 
 
-    # --------------------------------------------------------
-    # Tuned SVM
-    # Best parameter from notebook: C = 10
-    # --------------------------------------------------------
+    X_test_tfidf = (
+        tfidf.transform(
+            X_test
+        )
+    )
+
+
+    # ========================================================
+    # SVM
+    # ========================================================
 
     svm_model = SVC(
         kernel="linear",
@@ -292,34 +521,47 @@ def train_evaluation_models(data):
         random_state=42
     )
 
+
     svm_model.fit(
         X_train_tfidf,
         y_train
     )
 
-    svm_predictions = svm_model.predict(
-        X_test_tfidf
+
+    svm_predictions = (
+        svm_model.predict(
+            X_test_tfidf
+        )
     )
 
-    svm_probabilities = svm_model.predict_proba(
-        X_test_tfidf
+
+    svm_probabilities = (
+        svm_model.predict_proba(
+            X_test_tfidf
+        )
     )
 
 
-    # --------------------------------------------------------
-    # Word2Vec
-    # Train ONLY using training documents
-    # --------------------------------------------------------
+    # ========================================================
+    # WORD2VEC
+    # ========================================================
 
-    train_tokens = data.loc[
-        X_train.index,
-        "lemmatized_tokens"
-    ].tolist()
+    train_tokens = (
+        data.loc[
+            X_train.index,
+            "lemmatized_tokens"
+        ]
+        .tolist()
+    )
 
-    test_tokens = data.loc[
-        X_test.index,
-        "lemmatized_tokens"
-    ].tolist()
+
+    test_tokens = (
+        data.loc[
+            X_test.index,
+            "lemmatized_tokens"
+        ]
+        .tolist()
+    )
 
 
     w2v_model = Word2Vec(
@@ -341,10 +583,13 @@ def train_evaluation_models(data):
             if word in w2v_model.wv
         ]
 
+
         if len(vectors) == 0:
+
             return np.zeros(
                 w2v_model.vector_size
             )
+
 
         return np.mean(
             vectors,
@@ -357,16 +602,16 @@ def train_evaluation_models(data):
         for tokens in train_tokens
     ])
 
+
     X_test_w2v = np.array([
         document_vector(tokens)
         for tokens in test_tokens
     ])
 
 
-    # --------------------------------------------------------
-    # Tuned Random Forest
-    # Best parameters obtained from notebook
-    # --------------------------------------------------------
+    # ========================================================
+    # RANDOM FOREST
+    # ========================================================
 
     rf_model = RandomForestClassifier(
         n_estimators=300,
@@ -378,43 +623,94 @@ def train_evaluation_models(data):
         n_jobs=-1
     )
 
+
     rf_model.fit(
         X_train_w2v,
         y_train
     )
 
-    rf_predictions = rf_model.predict(
-        X_test_w2v
+
+    rf_predictions = (
+        rf_model.predict(
+            X_test_w2v
+        )
     )
 
-    rf_probabilities = rf_model.predict_proba(
-        X_test_w2v
+
+    rf_probabilities = (
+        rf_model.predict_proba(
+            X_test_w2v
+        )
     )
 
 
     return {
-        "X_train": X_train,
-        "X_test": X_test,
-        "y_train": y_train,
-        "y_test": y_test,
 
-        "tfidf": tfidf,
-        "svm_model": svm_model,
-        "svm_predictions": svm_predictions,
-        "svm_probabilities": svm_probabilities,
+        "X_train":
+        X_train,
 
-        "w2v_model": w2v_model,
-        "rf_model": rf_model,
-        "rf_predictions": rf_predictions,
-        "rf_probabilities": rf_probabilities
+        "X_test":
+        X_test,
+
+        "y_train":
+        y_train,
+
+        "y_test":
+        y_test,
+
+        "tfidf":
+        tfidf,
+
+        "svm_model":
+        svm_model,
+
+        "svm_predictions":
+        svm_predictions,
+
+        "svm_probabilities":
+        svm_probabilities,
+
+        "w2v_model":
+        w2v_model,
+
+        "rf_model":
+        rf_model,
+
+        "rf_predictions":
+        rf_predictions,
+
+        "rf_probabilities":
+        rf_probabilities
     }
 
 
-model_results = train_evaluation_models(df)
+with st.spinner(
+    "Preparing text and models..."
+):
+
+    try:
+
+        model_results = (
+            train_models(
+                df
+            )
+        )
+
+    except Exception as error:
+
+        st.error(
+            "The models could not be trained on this dataset."
+        )
+
+        st.exception(
+            error
+        )
+
+        st.stop()
 
 
 # ============================================================
-# 9. MODEL METRIC FUNCTION
+# 15. METRICS
 # ============================================================
 
 def calculate_metrics(
@@ -429,12 +725,14 @@ def calculate_metrics(
         predictions
     )
 
+
     precision = precision_score(
         y_true,
         predictions,
         average="weighted",
         zero_division=0
     )
+
 
     recall = recall_score(
         y_true,
@@ -443,6 +741,7 @@ def calculate_metrics(
         zero_division=0
     )
 
+
     f1 = f1_score(
         y_true,
         predictions,
@@ -450,86 +749,163 @@ def calculate_metrics(
         zero_division=0
     )
 
-    roc_auc = roc_auc_score(
-        y_true,
-        probabilities,
-        multi_class="ovr",
-        average="weighted",
-        labels=classes
-    )
+
+    # ROC-AUC can fail when the uploaded
+    # test subset does not contain every class.
+    try:
+
+        if len(classes) == 2:
+
+            positive_class = (
+                classes[1]
+            )
+
+            binary_true = (
+                y_true
+                == positive_class
+            ).astype(int)
+
+            roc_auc = roc_auc_score(
+                binary_true,
+                probabilities[:, 1]
+            )
+
+        else:
+
+            roc_auc = roc_auc_score(
+                y_true,
+                probabilities,
+                multi_class="ovr",
+                average="weighted",
+                labels=classes
+            )
+
+    except Exception:
+
+        roc_auc = np.nan
+
 
     return {
-        "Accuracy": accuracy,
-        "Precision": precision,
-        "Recall": recall,
-        "Weighted F1": f1,
-        "ROC-AUC": roc_auc
+
+        "Accuracy":
+        accuracy,
+
+        "Precision":
+        precision,
+
+        "Recall":
+        recall,
+
+        "Weighted F1":
+        f1,
+
+        "ROC-AUC":
+        roc_auc
     }
 
 
 svm_metrics = calculate_metrics(
     model_results["y_test"],
-    model_results["svm_predictions"],
-    model_results["svm_probabilities"],
-    model_results["svm_model"].classes_
+    model_results[
+        "svm_predictions"
+    ],
+    model_results[
+        "svm_probabilities"
+    ],
+    model_results[
+        "svm_model"
+    ].classes_
 )
 
 
 rf_metrics = calculate_metrics(
     model_results["y_test"],
-    model_results["rf_predictions"],
-    model_results["rf_probabilities"],
-    model_results["rf_model"].classes_
+    model_results[
+        "rf_predictions"
+    ],
+    model_results[
+        "rf_probabilities"
+    ],
+    model_results[
+        "rf_model"
+    ].classes_
 )
 
 
 # ============================================================
-# 10. MODEL COMPARISON TABLE
+# 16. MODEL COMPARISON
 # ============================================================
 
 model_comparison = pd.DataFrame({
+
     "Model": [
         "TF-IDF + SVM",
         "Word2Vec + Random Forest"
     ],
+
     "Accuracy": [
-        svm_metrics["Accuracy"],
-        rf_metrics["Accuracy"]
+        svm_metrics[
+            "Accuracy"
+        ],
+        rf_metrics[
+            "Accuracy"
+        ]
     ],
+
     "Precision": [
-        svm_metrics["Precision"],
-        rf_metrics["Precision"]
+        svm_metrics[
+            "Precision"
+        ],
+        rf_metrics[
+            "Precision"
+        ]
     ],
+
     "Recall": [
-        svm_metrics["Recall"],
-        rf_metrics["Recall"]
+        svm_metrics[
+            "Recall"
+        ],
+        rf_metrics[
+            "Recall"
+        ]
     ],
+
     "Weighted F1": [
-        svm_metrics["Weighted F1"],
-        rf_metrics["Weighted F1"]
+        svm_metrics[
+            "Weighted F1"
+        ],
+        rf_metrics[
+            "Weighted F1"
+        ]
     ],
+
     "ROC-AUC": [
-        svm_metrics["ROC-AUC"],
-        rf_metrics["ROC-AUC"]
+        svm_metrics[
+            "ROC-AUC"
+        ],
+        rf_metrics[
+            "ROC-AUC"
+        ]
     ]
 })
 
 
 selected_model = (
     model_comparison.loc[
-        model_comparison["Weighted F1"].idxmax(),
+        model_comparison[
+            "Weighted F1"
+        ].idxmax(),
         "Model"
     ]
 )
 
 
 # ============================================================
-# 11. FINAL SVM FOR LIVE PREDICTION
-# Train selected model using ALL labelled data
+# 17. TRAIN LIVE PREDICTION MODEL
 # ============================================================
 
 @st.cache_resource
-def train_live_prediction_model(data):
+def train_live_model(data):
 
     vectorizer = TfidfVectorizer(
         ngram_range=(1, 2),
@@ -538,9 +914,15 @@ def train_live_prediction_model(data):
         sublinear_tf=True
     )
 
-    X_full = vectorizer.fit_transform(
-        data["processed_text"]
+
+    X_full = (
+        vectorizer.fit_transform(
+            data[
+                "processed_text"
+            ]
+        )
     )
+
 
     model = SVC(
         kernel="linear",
@@ -549,35 +931,59 @@ def train_live_prediction_model(data):
         random_state=42
     )
 
+
     model.fit(
         X_full,
-        data["sentiment_label"]
+        data[
+            "sentiment_label"
+        ]
     )
 
-    return vectorizer, model
+
+    return (
+        vectorizer,
+        model
+    )
 
 
 live_vectorizer, live_model = (
-    train_live_prediction_model(df)
+    train_live_model(
+        df
+    )
 )
 
 
 # ============================================================
-# 12. SIDEBAR NAVIGATION
+# 18. SIDEBAR NAVIGATION
 # ============================================================
 
-st.sidebar.title("Navigation")
+st.sidebar.divider()
+
 
 page = st.sidebar.radio(
-    "Select Page",
+    "Navigation",
     [
         "Overview",
         "Data Explorer",
         "Text Preprocessing",
         "Exploratory Text Analytics",
         "Model Performance",
-        "Live Prediction"
+        "Live Prediction",
+        "Batch Prediction"
     ]
+)
+
+
+st.sidebar.divider()
+
+
+st.sidebar.caption(
+    f"Active data: {dataset_name}"
+)
+
+
+st.sidebar.caption(
+    "Group 12 | MSBA 610"
 )
 
 
@@ -587,87 +993,175 @@ page = st.sidebar.radio(
 
 if page == "Overview":
 
-    st.header("Dataset Overview")
+    st.header(
+        "Dataset Overview"
+    )
 
-    col1, col2, col3, col4 = st.columns(4)
+
+    st.info(
+        f"Current data source: {dataset_name}"
+    )
+
+
+    col1, col2, col3, col4 = (
+        st.columns(4)
+    )
+
 
     col1.metric(
         "Feedback Records",
-        len(df)
+        f"{len(df):,}"
     )
 
-    col2.metric(
-        "Departments",
-        df["department"].nunique()
-    )
 
-    col3.metric(
-        "Subjects",
-        df["subject_name"].nunique()
-    )
+    if "department" in df.columns:
+
+        col2.metric(
+            "Departments",
+            df[
+                "department"
+            ].nunique()
+        )
+
+    else:
+
+        col2.metric(
+            "Departments",
+            "N/A"
+        )
+
+
+    if "subject_name" in df.columns:
+
+        col3.metric(
+            "Subjects",
+            df[
+                "subject_name"
+            ].nunique()
+        )
+
+    else:
+
+        col3.metric(
+            "Subjects",
+            "N/A"
+        )
+
 
     col4.metric(
         "Sentiment Classes",
-        df["sentiment_label"].nunique()
+        df[
+            "sentiment_label"
+        ].nunique()
     )
 
 
-    st.subheader("Sentiment Distribution")
+    st.divider()
 
-    fig, ax = plt.subplots(figsize=(8, 5))
 
-    sns.countplot(
-        data=df,
-        x="sentiment_label",
-        order=df["sentiment_label"].value_counts().index,
-        ax=ax
+    left, right = (
+        st.columns(
+            [1.4, 1]
+        )
     )
 
-    ax.set_xlabel("Sentiment")
-    ax.set_ylabel("Number of Records")
 
-    st.pyplot(fig)
+    with left:
+
+        st.subheader(
+            "Sentiment Distribution"
+        )
 
 
-    col1, col2 = st.columns(2)
+        fig, ax = plt.subplots(
+            figsize=(8, 4)
+        )
 
 
-    with col1:
+        sns.countplot(
+            data=df,
+            x="sentiment_label",
+            ax=ax
+        )
 
-        st.subheader("Emotion Distribution")
 
-        emotion_counts = (
-            df["emotion_tag"]
+        ax.set_xlabel(
+            "Sentiment"
+        )
+
+
+        ax.set_ylabel(
+            "Number of Records"
+        )
+
+
+        sns.despine()
+
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
+
+
+    with right:
+
+        st.subheader(
+            "Dataset Profile"
+        )
+
+
+        class_counts = (
+            df[
+                "sentiment_label"
+            ]
             .value_counts()
         )
 
-        st.bar_chart(emotion_counts)
+
+        with st.container(
+            border=True
+        ):
+
+            for class_name, count in (
+                class_counts.items()
+            ):
+
+                st.metric(
+                    class_name.title(),
+                    int(count)
+                )
 
 
-    with col2:
+    st.divider()
 
-        st.subheader("Feedback Type")
 
-        feedback_counts = (
-            df["feedback_type"]
-            .value_counts()
+    if "emotion_tag" in df.columns:
+
+        st.subheader(
+            "Emotion Distribution"
         )
 
-        st.bar_chart(feedback_counts)
+
+        st.bar_chart(
+            df[
+                "emotion_tag"
+            ].value_counts()
+        )
 
 
-    st.subheader("Key Dataset Findings")
+    if "feedback_type" in df.columns:
 
-    st.write(
-        """
-        - The dataset contains 1,223 student feedback records.
-        - Positive feedback forms the largest sentiment class.
-        - The three sentiment classes are reasonably balanced.
-        - Feedback comments are generally short.
-        - Exploratory analysis shows considerable vocabulary overlap
-          between positive, neutral and negative feedback.
-        """
-    )
+        st.subheader(
+            "Feedback Type"
+        )
+
+
+        st.bar_chart(
+            df[
+                "feedback_type"
+            ].value_counts()
+        )
 
 
 # ============================================================
@@ -676,87 +1170,132 @@ if page == "Overview":
 
 elif page == "Data Explorer":
 
-    st.header("Data Explorer")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        selected_department = st.selectbox(
-            "Department",
-            ["All"] + sorted(
-                df["department"].unique().tolist()
-            )
-        )
-
-
-    with col2:
-
-        selected_sentiment = st.selectbox(
-            "Sentiment",
-            ["All"] + sorted(
-                df["sentiment_label"].unique().tolist()
-            )
-        )
-
-
-    with col3:
-
-        selected_type = st.selectbox(
-            "Feedback Type",
-            ["All"] + sorted(
-                df["feedback_type"].unique().tolist()
-            )
-        )
-
-
-    filtered_df = df.copy()
-
-
-    if selected_department != "All":
-
-        filtered_df = filtered_df[
-            filtered_df["department"]
-            == selected_department
-        ]
-
-
-    if selected_sentiment != "All":
-
-        filtered_df = filtered_df[
-            filtered_df["sentiment_label"]
-            == selected_sentiment
-        ]
-
-
-    if selected_type != "All":
-
-        filtered_df = filtered_df[
-            filtered_df["feedback_type"]
-            == selected_type
-        ]
-
-
-    st.write(
-        "Records displayed:",
-        len(filtered_df)
+    st.header(
+        "Data Explorer"
     )
+
+
+    st.caption(
+        "Inspect the active dataset."
+    )
+
+
+    # Build filters only where
+    # the uploaded dataset contains those fields.
+
+    filtered_df = (
+        df.copy()
+    )
+
+
+    available_filters = []
+
+
+    if "department" in df.columns:
+
+        available_filters.append(
+            "department"
+        )
+
+
+    if "sentiment_label" in df.columns:
+
+        available_filters.append(
+            "sentiment_label"
+        )
+
+
+    if "feedback_type" in df.columns:
+
+        available_filters.append(
+            "feedback_type"
+        )
+
+
+    filter_columns = (
+        st.columns(
+            max(
+                1,
+                len(
+                    available_filters
+                )
+            )
+        )
+    )
+
+
+    for index, column in enumerate(
+        available_filters
+    ):
+
+        options = [
+            "All"
+        ] + sorted(
+            df[column]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+
+        with filter_columns[index]:
+
+            selection = (
+                st.selectbox(
+                    column.replace(
+                        "_",
+                        " "
+                    ).title(),
+                    options,
+                    key=f"filter_{column}"
+                )
+            )
+
+
+        if selection != "All":
+
+            filtered_df = (
+                filtered_df[
+                    filtered_df[
+                        column
+                    ].astype(str)
+                    == selection
+                ]
+            )
+
+
+    st.metric(
+        "Matching Records",
+        len(
+            filtered_df
+        )
+    )
+
+
+    display_columns = [
+        column
+        for column in [
+            "student_id",
+            "department",
+            "subject_name",
+            "feedback_text",
+            "sentiment_label",
+            "emotion_tag",
+            "feedback_type",
+            "sarcasm_flag"
+        ]
+        if column
+        in filtered_df.columns
+    ]
 
 
     st.dataframe(
         filtered_df[
-            [
-                "student_id",
-                "department",
-                "subject_name",
-                "feedback_text",
-                "sentiment_label",
-                "emotion_tag",
-                "feedback_type",
-                "sarcasm_flag"
-            ]
+            display_columns
         ],
-        use_container_width=True
+        use_container_width=True,
+        hide_index=True
     )
 
 
@@ -766,28 +1305,116 @@ elif page == "Data Explorer":
 
 elif page == "Text Preprocessing":
 
-    st.header("Text Preprocessing Pipeline")
+    st.header(
+        "Text Preprocessing"
+    )
 
-    st.write(
-        """
-        Raw student feedback was processed using the following stages:
 
-        1. Lowercase conversion
-        2. Regular-expression cleaning
-        3. Tokenisation
-        4. Stopword removal
-        5. Negation preservation
-        6. Lemmatisation
-        7. Reconstruction into final processed text
-        """
+    st.caption(
+        "Transforming raw feedback into clean model-ready text."
+    )
+
+
+    step1, step2, step3 = (
+        st.columns(3)
+    )
+
+
+    with step1:
+
+        with st.container(
+            border=True
+        ):
+
+            st.subheader(
+                "Cleaning"
+            )
+
+            st.write(
+                "Lowercase conversion and removal of HTML, URLs, "
+                "emails, digits, punctuation and excess spaces."
+            )
+
+
+    with step2:
+
+        with st.container(
+            border=True
+        ):
+
+            st.subheader(
+                "Tokenisation"
+            )
+
+            st.write(
+                "Feedback text is split into individual word tokens."
+            )
+
+
+    with step3:
+
+        with st.container(
+            border=True
+        ):
+
+            st.subheader(
+                "Stopword Removal"
+            )
+
+            st.write(
+                "Common English words are removed while no, nor and "
+                "not are retained."
+            )
+
+
+    step4, step5 = (
+        st.columns(2)
+    )
+
+
+    with step4:
+
+        with st.container(
+            border=True
+        ):
+
+            st.subheader(
+                "Lemmatisation"
+            )
+
+            st.write(
+                "Words are reduced towards their base forms."
+            )
+
+
+    with step5:
+
+        with st.container(
+            border=True
+        ):
+
+            st.subheader(
+                "Final Text"
+            )
+
+            st.write(
+                "Processed tokens are joined into model-ready text."
+            )
+
+
+    st.divider()
+
+
+    st.subheader(
+        "Preprocessing Examples"
     )
 
 
     sample_size = st.slider(
-        "Number of examples",
-        min_value=1,
-        max_value=20,
-        value=5
+        "Number of records",
+        1,
+        15,
+        5
     )
 
 
@@ -796,21 +1423,29 @@ elif page == "Text Preprocessing":
             [
                 "feedback_text",
                 "cleaned_text",
-                "tokens",
-                "filtered_tokens",
-                "lemmatized_tokens",
                 "processed_text"
             ]
-        ].head(sample_size),
-        use_container_width=True
+        ].head(
+            sample_size
+        ),
+        use_container_width=True,
+        hide_index=True
     )
 
 
-    st.subheader("Preprocessing Example")
+    st.divider()
 
-    example_text = st.text_input(
-        "Enter text to preprocess",
-        "The Lecturer was VERY helpful!!!"
+
+    st.subheader(
+        "Try the Preprocessing Pipeline"
+    )
+
+
+    example_text = (
+        st.text_input(
+            "Enter sample feedback",
+            "The Lecturer was VERY helpful!!!"
+        )
     )
 
 
@@ -822,15 +1457,84 @@ elif page == "Text Preprocessing":
             filtered,
             lemmatized,
             processed
-        ) = preprocess_text(example_text)
+        ) = preprocess_text(
+            example_text
+        )
 
 
-        st.write("**Original:**", example_text)
-        st.write("**Cleaned:**", cleaned)
-        st.write("**Tokens:**", tokens)
-        st.write("**After Stopword Removal:**", filtered)
-        st.write("**Lemmatized:**", lemmatized)
-        st.write("**Final Processed Text:**", processed)
+        col1, col2 = (
+            st.columns(2)
+        )
+
+
+        with col1:
+
+            with st.container(
+                border=True
+            ):
+
+                st.write(
+                    "**Original Text**"
+                )
+
+                st.write(
+                    example_text
+                )
+
+
+                st.write(
+                    "**Cleaned Text**"
+                )
+
+                st.write(
+                    cleaned
+                )
+
+
+        with col2:
+
+            with st.container(
+                border=True
+            ):
+
+                st.write(
+                    "**Final Processed Text**"
+                )
+
+                st.write(
+                    processed
+                )
+
+
+        with st.expander(
+            "View intermediate stages"
+        ):
+
+            st.write(
+                "**Tokens**"
+            )
+
+            st.write(
+                tokens
+            )
+
+
+            st.write(
+                "**After Stopword Removal**"
+            )
+
+            st.write(
+                filtered
+            )
+
+
+            st.write(
+                "**After Lemmatisation**"
+            )
+
+            st.write(
+                lemmatized
+            )
 
 
 # ============================================================
@@ -839,22 +1543,32 @@ elif page == "Text Preprocessing":
 
 elif page == "Exploratory Text Analytics":
 
-    st.header("Exploratory Text Analytics")
+    st.header(
+        "Exploratory Text Analysis"
+    )
 
 
-    # --------------------------------------------------------
-    # TOP WORDS
-    # --------------------------------------------------------
+    st.caption(
+        "Exploring word usage and relationships in the active dataset."
+    )
+
 
     all_words = " ".join(
-        df["processed_text"]
+        df[
+            "processed_text"
+        ]
     ).split()
 
-    word_counts = Counter(all_words)
+
+    word_counts = Counter(
+        all_words
+    )
 
 
     top_words = pd.DataFrame(
-        word_counts.most_common(20),
+        word_counts.most_common(
+            20
+        ),
         columns=[
             "Word",
             "Frequency"
@@ -862,127 +1576,146 @@ elif page == "Exploratory Text Analytics":
     )
 
 
-    st.subheader("Top 20 Most Frequent Words")
-
-    fig, ax = plt.subplots(figsize=(9, 6))
-
-    sns.barplot(
-        data=top_words,
-        x="Frequency",
-        y="Word",
-        ax=ax
+    col1, col2 = (
+        st.columns(2)
     )
 
-    st.pyplot(fig)
 
+    with col1:
 
-    # --------------------------------------------------------
-    # WORDS BY SENTIMENT
-    # --------------------------------------------------------
-
-    st.subheader("Most Frequent Words by Sentiment")
-
-
-    selected_sentiment_words = st.selectbox(
-        "Select Sentiment",
-        sorted(
-            df["sentiment_label"]
-            .unique()
-            .tolist()
+        st.subheader(
+            "Most Frequent Words"
         )
-    )
 
 
-    sentiment_text = " ".join(
-        df.loc[
-            df["sentiment_label"]
-            == selected_sentiment_words,
-            "processed_text"
-        ]
-    )
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
 
 
-    sentiment_counts = Counter(
-        sentiment_text.split()
-    )
+        sns.barplot(
+            data=top_words,
+            x="Frequency",
+            y="Word",
+            ax=ax
+        )
 
 
-    sentiment_words = pd.DataFrame(
-        sentiment_counts.most_common(15),
-        columns=[
-            "Word",
-            "Frequency"
-        ]
-    )
+        sns.despine()
 
 
-    st.dataframe(
-        sentiment_words,
-        use_container_width=True
-    )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
-    # --------------------------------------------------------
-    # EMOTION VS SENTIMENT
-    # --------------------------------------------------------
+    with col2:
 
-    st.subheader("Emotion Tag by Sentiment")
-
-
-    emotion_sentiment = pd.crosstab(
-        df["emotion_tag"],
-        df["sentiment_label"]
-    )
+        st.subheader(
+            "Feedback Length"
+        )
 
 
-    fig, ax = plt.subplots(
-        figsize=(8, 5)
-    )
-
-    sns.heatmap(
-        emotion_sentiment,
-        annot=True,
-        fmt="d",
-        ax=ax
-    )
-
-    st.pyplot(fig)
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
 
 
-    # --------------------------------------------------------
-    # DEPARTMENT VS SENTIMENT
-    # --------------------------------------------------------
-
-    st.subheader("Sentiment Distribution by Department")
-
-
-    department_sentiment = pd.crosstab(
-        df["department"],
-        df["sentiment_label"]
-    )
+        sns.histplot(
+            data=df,
+            x="word_count",
+            bins=15,
+            ax=ax
+        )
 
 
-    st.bar_chart(
-        department_sentiment
-    )
+        sns.despine()
 
 
-    # --------------------------------------------------------
-    # FEEDBACK TYPE
-    # --------------------------------------------------------
-
-    st.subheader("Sentiment by Feedback Type")
-
-
-    feedback_sentiment = pd.crosstab(
-        df["feedback_type"],
-        df["sentiment_label"]
-    )
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
-    st.bar_chart(
-        feedback_sentiment
-    )
+    st.divider()
+
+
+    if "emotion_tag" in df.columns:
+
+        st.subheader(
+            "Emotion vs Sentiment"
+        )
+
+
+        emotion_sentiment = (
+            pd.crosstab(
+                df[
+                    "emotion_tag"
+                ],
+                df[
+                    "sentiment_label"
+                ]
+            )
+        )
+
+
+        fig, ax = plt.subplots(
+            figsize=(7, 5)
+        )
+
+
+        sns.heatmap(
+            emotion_sentiment,
+            annot=True,
+            fmt="d",
+            ax=ax
+        )
+
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
+
+
+    if "department" in df.columns:
+
+        st.subheader(
+            "Sentiment by Department"
+        )
+
+
+        st.bar_chart(
+            pd.crosstab(
+                df[
+                    "department"
+                ],
+                df[
+                    "sentiment_label"
+                ]
+            )
+        )
+
+
+    if "feedback_type" in df.columns:
+
+        st.subheader(
+            "Sentiment by Feedback Type"
+        )
+
+
+        st.bar_chart(
+            pd.crosstab(
+                df[
+                    "feedback_type"
+                ],
+                df[
+                    "sentiment_label"
+                ]
+            )
+        )
 
 
 # ============================================================
@@ -991,41 +1724,55 @@ elif page == "Exploratory Text Analytics":
 
 elif page == "Model Performance":
 
-    st.header("Model Performance")
-
-
-    st.subheader("Model Comparison")
-
-    comparison_display = (
-        model_comparison
-        .set_index("Model")
-        .round(4)
+    st.header(
+        "Model Performance"
     )
 
+
+    st.caption(
+        "Comparison of TF-IDF + SVM and Word2Vec + Random Forest."
+    )
+
+
+    st.subheader(
+        "Performance Summary"
+    )
+
+
     st.dataframe(
-        comparison_display,
+        model_comparison
+        .set_index(
+            "Model"
+        )
+        .round(4),
         use_container_width=True
     )
 
 
-    st.success(
-        f"Selected Model: {selected_model}"
+    with st.container(
+        border=True
+    ):
+
+        st.subheader(
+            "Selected Model"
+        )
+
+        st.write(
+            f"**{selected_model}**"
+        )
+
+        st.write(
+            "Weighted F1 is used as the primary model-selection criterion."
+        )
+
+
+    st.divider()
+
+
+    st.subheader(
+        "Metric Comparison"
     )
 
-
-    st.write(
-        """
-        Weighted F1 was defined as the primary model-selection criterion.
-        The TF-IDF + SVM model achieved the higher weighted F1 score,
-        although Random Forest achieved slightly higher accuracy and
-        ROC-AUC.
-        """
-    )
-
-
-    # --------------------------------------------------------
-    # PERFORMANCE BAR CHART
-    # --------------------------------------------------------
 
     comparison_long = (
         model_comparison
@@ -1038,7 +1785,7 @@ elif page == "Model Performance":
 
 
     fig, ax = plt.subplots(
-        figsize=(10, 6)
+        figsize=(9, 5)
     )
 
 
@@ -1053,38 +1800,57 @@ elif page == "Model Performance":
 
     ax.set_ylim(
         0,
-        0.6
+        max(
+            1,
+            comparison_long[
+                "Score"
+            ].max()
+            + 0.1
+        )
     )
 
 
-    ax.set_title(
-        "Performance Comparison"
+    sns.despine()
+
+
+    st.pyplot(
+        fig,
+        use_container_width=True
     )
 
 
-    st.pyplot(fig)
+    st.divider()
 
 
-    # --------------------------------------------------------
-    # CONFUSION MATRICES
-    # --------------------------------------------------------
-
-    st.subheader("Confusion Matrices")
+    st.subheader(
+        "Confusion Matrices"
+    )
 
 
-    col1, col2 = st.columns(2)
+    col1, col2 = (
+        st.columns(2)
+    )
 
 
     with col1:
 
-        st.write("### TF-IDF + SVM")
+        st.write(
+            "**TF-IDF + SVM**"
+        )
 
-        cm_svm = confusion_matrix(
-            model_results["y_test"],
-            model_results["svm_predictions"],
-            labels=model_results[
-                "svm_model"
-            ].classes_
+
+        cm_svm = (
+            confusion_matrix(
+                model_results[
+                    "y_test"
+                ],
+                model_results[
+                    "svm_predictions"
+                ],
+                labels=model_results[
+                    "svm_model"
+                ].classes_
+            )
         )
 
 
@@ -1107,23 +1873,41 @@ elif page == "Model Performance":
         )
 
 
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("Actual")
+        ax.set_xlabel(
+            "Predicted"
+        )
 
 
-        st.pyplot(fig)
+        ax.set_ylabel(
+            "Actual"
+        )
+
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
 
 
     with col2:
 
-        st.write("### Word2Vec + Random Forest")
+        st.write(
+            "**Word2Vec + Random Forest**"
+        )
 
-        cm_rf = confusion_matrix(
-            model_results["y_test"],
-            model_results["rf_predictions"],
-            labels=model_results[
-                "rf_model"
-            ].classes_
+
+        cm_rf = (
+            confusion_matrix(
+                model_results[
+                    "y_test"
+                ],
+                model_results[
+                    "rf_predictions"
+                ],
+                labels=model_results[
+                    "rf_model"
+                ].classes_
+            )
         )
 
 
@@ -1146,104 +1930,20 @@ elif page == "Model Performance":
         )
 
 
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("Actual")
-
-
-        st.pyplot(fig)
-
-
-    # --------------------------------------------------------
-    # ROC CURVE - SVM
-    # --------------------------------------------------------
-
-    st.subheader(
-        "One-vs-Rest ROC Curves - TF-IDF + SVM"
-    )
-
-
-    svm_classes = model_results[
-        "svm_model"
-    ].classes_
-
-
-    y_binary = label_binarize(
-        model_results["y_test"],
-        classes=svm_classes
-    )
-
-
-    fig, ax = plt.subplots(
-        figsize=(8, 6)
-    )
-
-
-    for i, class_name in enumerate(
-        svm_classes
-    ):
-
-        fpr, tpr, _ = roc_curve(
-            y_binary[:, i],
-            model_results[
-                "svm_probabilities"
-            ][:, i]
+        ax.set_xlabel(
+            "Predicted"
         )
 
 
-        class_auc = auc(
-            fpr,
-            tpr
+        ax.set_ylabel(
+            "Actual"
         )
 
 
-        ax.plot(
-            fpr,
-            tpr,
-            label=(
-                f"{class_name} "
-                f"(AUC={class_auc:.3f})"
-            )
+        st.pyplot(
+            fig,
+            use_container_width=True
         )
-
-
-    ax.plot(
-        [0, 1],
-        [0, 1],
-        linestyle="--",
-        label="Random classifier"
-    )
-
-
-    ax.set_xlabel(
-        "False Positive Rate"
-    )
-
-    ax.set_ylabel(
-        "True Positive Rate"
-    )
-
-    ax.legend()
-
-
-    st.pyplot(fig)
-
-
-    st.subheader("Interpretation")
-
-    st.write(
-        """
-        Neither model demonstrates strong sentiment discrimination.
-
-        The exploratory analysis showed considerable vocabulary overlap
-        between positive, neutral and negative feedback. Manual inspection
-        also identified several feedback texts whose wording has weak or
-        unclear semantic correspondence with the supplied sentiment label.
-
-        Consequently, limited predictive performance appears to be
-        influenced by the quality of the textual signal available in the
-        supplied dataset rather than by class imbalance alone.
-        """
-    )
 
 
 # ============================================================
@@ -1252,31 +1952,32 @@ elif page == "Model Performance":
 
 elif page == "Live Prediction":
 
-    st.header("Live Student Feedback Prediction")
-
-    st.write(
-        """
-        Enter a new student-feedback comment below.
-
-        The selected TF-IDF + SVM model will classify the feedback
-        as positive, neutral or negative.
-        """
+    st.header(
+        "Sentiment Prediction"
     )
 
 
-    new_feedback = st.text_area(
-        "Student Feedback",
-        height=150,
-        placeholder=(
-            "Example: The lecturer explains the topics clearly "
-            "and the course is very helpful."
+    st.caption(
+        "Enter one feedback comment and predict its sentiment."
+    )
+
+
+    new_feedback = (
+        st.text_area(
+            "Student Feedback",
+            height=150,
+            placeholder=(
+                "Example: The lecturer explains the topics clearly "
+                "and the course is very helpful."
+            )
         )
     )
 
 
     if st.button(
         "Predict Sentiment",
-        type="primary"
+        type="primary",
+        use_container_width=True
     ):
 
         if not new_feedback.strip():
@@ -1284,6 +1985,7 @@ elif page == "Live Prediction":
             st.warning(
                 "Please enter some feedback first."
             )
+
 
         else:
 
@@ -1322,63 +2024,277 @@ elif page == "Live Prediction":
             )
 
 
-            st.success(
-                f"Predicted Sentiment: "
-                f"{prediction.upper()}"
-            )
-
-
-            probability_df = pd.DataFrame({
-                "Sentiment":
-                    live_model.classes_,
-
-                "Probability":
-                    probabilities
-            })
-
-
-            probability_df[
-                "Probability"
-            ] = (
-                probability_df[
-                    "Probability"
-                ] * 100
-            )
-
-
-            probability_df[
-                "Probability"
-            ] = (
-                probability_df[
-                    "Probability"
-                ].round(2)
-            )
-
-
             st.subheader(
-                "Prediction Probabilities"
+                "Prediction Result"
             )
+
+
+            st.metric(
+                "Predicted Sentiment",
+                prediction.title()
+            )
+
+
+            probability_df = (
+                pd.DataFrame(
+                    {
+                        "Sentiment":
+                        live_model.classes_,
+
+                        "Probability":
+                        probabilities
+                    }
+                )
+            )
+
+
+            probability_df[
+                "Probability"
+            ] = (
+                probability_df[
+                    "Probability"
+                ]
+                * 100
+            ).round(2)
 
 
             st.dataframe(
                 probability_df,
-                use_container_width=True
+                use_container_width=True,
+                hide_index=True
             )
 
 
             st.bar_chart(
-                probability_df.set_index(
+                probability_df
+                .set_index(
                     "Sentiment"
                 )
             )
 
 
-            st.subheader(
-                "Processed Input"
+# ============================================================
+# PAGE 7 - BATCH PREDICTION
+# ============================================================
+
+elif page == "Batch Prediction":
+
+    st.header(
+        "Batch Feedback Prediction"
+    )
+
+
+    st.caption(
+        "Upload a CSV containing feedback comments and predict "
+        "sentiment for every row."
+    )
+
+
+    st.info(
+        "The prediction file only needs one required column: "
+        "'feedback_text'."
+    )
+
+
+    prediction_file = (
+        st.file_uploader(
+            "Upload CSV for prediction",
+            type=["csv"],
+            key="batch_prediction_upload"
+        )
+    )
+
+
+    if prediction_file is not None:
+
+        try:
+
+            prediction_df = (
+                pd.read_csv(
+                    prediction_file
+                )
             )
 
-            st.write(
-                processed
+        except Exception as error:
+
+            st.error(
+                f"The CSV could not be read: {error}"
+            )
+
+            st.stop()
+
+
+        if (
+            "feedback_text"
+            not in prediction_df.columns
+        ):
+
+            st.error(
+                "The uploaded prediction file must contain "
+                "a column named 'feedback_text'."
+            )
+
+            st.stop()
+
+
+        st.subheader(
+            "Uploaded Feedback"
+        )
+
+
+        st.dataframe(
+            prediction_df.head(
+                20
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        st.write(
+            f"Rows ready for prediction: "
+            f"**{len(prediction_df):,}**"
+        )
+
+
+        if st.button(
+            "Run Batch Prediction",
+            type="primary",
+            use_container_width=True
+        ):
+
+            with st.spinner(
+                "Predicting sentiment..."
+            ):
+
+                batch_results = (
+                    prediction_df.copy()
+                )
+
+
+                processed_batch = (
+                    batch_results[
+                        "feedback_text"
+                    ]
+                    .astype(str)
+                    .apply(
+                        lambda text:
+                        preprocess_text(
+                            text
+                        )[4]
+                    )
+                )
+
+
+                batch_vectors = (
+                    live_vectorizer
+                    .transform(
+                        processed_batch
+                    )
+                )
+
+
+                batch_predictions = (
+                    live_model
+                    .predict(
+                        batch_vectors
+                    )
+                )
+
+
+                batch_probabilities = (
+                    live_model
+                    .predict_proba(
+                        batch_vectors
+                    )
+                )
+
+
+                batch_results[
+                    "predicted_sentiment"
+                ] = (
+                    batch_predictions
+                )
+
+
+                # Highest predicted class probability
+                batch_results[
+                    "prediction_confidence"
+                ] = (
+                    batch_probabilities.max(
+                        axis=1
+                    )
+                    * 100
+                ).round(2)
+
+
+                # Add probability for each class
+                for index, class_name in enumerate(
+                    live_model.classes_
+                ):
+
+                    batch_results[
+                        f"probability_{class_name}"
+                    ] = (
+                        batch_probabilities[
+                            :,
+                            index
+                        ]
+                        * 100
+                    ).round(2)
+
+
+            st.success(
+                "Batch prediction completed."
+            )
+
+
+            st.subheader(
+                "Prediction Results"
+            )
+
+
+            st.dataframe(
+                batch_results,
+                use_container_width=True,
+                hide_index=True
+            )
+
+
+            st.subheader(
+                "Predicted Sentiment Distribution"
+            )
+
+
+            st.bar_chart(
+                batch_results[
+                    "predicted_sentiment"
+                ]
+                .value_counts()
+            )
+
+
+            csv_output = (
+                batch_results
+                .to_csv(
+                    index=False
+                )
+                .encode(
+                    "utf-8"
+                )
+            )
+
+
+            st.download_button(
+                label=(
+                    "Download Prediction Results"
+                ),
+                data=csv_output,
+                file_name=(
+                    "student_feedback_predictions.csv"
+                ),
+                mime="text/csv",
+                use_container_width=True
             )
 
 
@@ -1388,7 +2304,8 @@ elif page == "Live Prediction":
 
 st.divider()
 
+
 st.caption(
-    "Group 12 | Student Feedback Analytics | "
-    "Text Analytics Project"
+    "Group 12 | MSBA 610 Advanced Text Analytics | "
+    "Student Feedback Sentiment Analytics"
 )
